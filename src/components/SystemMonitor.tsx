@@ -181,7 +181,7 @@ export default function SystemMonitor() {
                     <td className="py-3 px-4">{t.receiver || "-"}</td>
                     <td className="py-3 px-4 text-slate-500">{t.timestamp}</td>
                     <td className="py-3 px-4 text-slate-400">
-                      {t.device_score.toFixed(2)} / {t.location_score.toFixed(2)} / {t.velocity_score}
+                      {t.device_score !== undefined ? t.device_score.toFixed(2) : '-'} / {t.location_score !== undefined ? t.location_score.toFixed(2) : '-'} / {t.velocity_score !== undefined ? t.velocity_score : '-'}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`px-2.5 py-0.5 rounded font-sans font-bold text-[10px] uppercase border ${

@@ -1,9 +1,17 @@
-import React, { useState } from "react";
-import { Search, AlertTriangle, ShieldCheck, HelpCircle, MapPin, Landmark } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Search, AlertTriangle, ShieldCheck, HelpCircle, MapPin, Landmark, Scan, Phone, XCircle, CheckCircle, Ban } from "lucide-react";
 import { PersonalizedAssessment } from "../types";
 
 export default function PrePaymentRiskCheck() {
-  const [userId, setUserId] = useState("");
+  const [scannerInput, setScannerInput] = useState("");
+  const [userId, setUserId] = useState(() => {
+    try {
+      const stored = localStorage.getItem("upi_guard_user");
+      return stored ? JSON.parse(stored).id : "";
+    } catch {
+      return "";
+    }
+  });
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
   const [upiId, setUpiId] = useState("");
@@ -11,11 +19,42 @@ export default function PrePaymentRiskCheck() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [assessment, setAssessment] = useState<PersonalizedAssessment | null>(null);
+  const [showOverlay, setShowOverlay] = useState(false);
+
+  const handleScannerInput = (val: string) => {
+    setScannerInput(val);
+    const trimmed = val.trim();
+    if (!trimmed) return;
+
+    // Is it a UPI QR string?
+    if (trimmed.toLowerCase().startsWith("upi://pay")) {
+      try {
+        const url = new URL(trimmed);
+        const pa = url.searchParams.get("pa"); // Payee VPA
+        const pn = url.searchParams.get("pn"); // Payee Name
+        const am = url.searchParams.get("am"); // Amount
+        
+        if (pa) setUpiId(pa);
+        if (pn) setMerchant(decodeURIComponent(pn));
+        if (am) setAmount(am);
+        return;
+      } catch (e) {
+        // ignore parse error
+      }
+    }
+
+    // Is it a phone number?
+    if (/^\d{10}$/.test(trimmed)) {
+      setUpiId(`${trimmed}@upi`);
+      setMerchant("Unknown Phone Contact");
+      return;
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId.trim() || !merchant.trim() || !amount) {
-      setError("Please fill out all required fields (User ID, Merchant, Amount).");
+    if (!userId.trim() || (!merchant.trim() && !upiId.trim()) || !amount) {
+      setError("Please fill out all required fields (User ID, Merchant/UPI, Amount).");
       return;
     }
 
@@ -25,11 +64,12 @@ export default function PrePaymentRiskCheck() {
 
     const payload = {
       user_id: userId.trim(),
-      merchant: merchant.trim(),
+      merchant: merchant.trim() || upiId.trim(),
       amount: parseFloat(amount),
       timestamp: new Date().toISOString(),
       upi_id: upiId.trim() || null,
       location: location.trim() || null,
+      scanner_input: scannerInput.trim() || null
     };
 
     try {
@@ -45,6 +85,7 @@ export default function PrePaymentRiskCheck() {
 
       const data = await res.json();
       setAssessment(data);
+      setShowOverlay(true);
     } catch (err: any) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -53,6 +94,58 @@ export default function PrePaymentRiskCheck() {
   };
 
   return (
+    <>
+      {showOverlay && assessment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+          <div className={`max-w-md w-full rounded-2xl p-8 border shadow-2xl ${assessment.risk_level === 'HIGH' ? 'bg-rose-950 border-rose-500/50 shadow-rose-900/20' : 'bg-slate-900 border-emerald-500/50 shadow-emerald-900/20'}`}>
+            {assessment.risk_level === "HIGH" ? (
+              <div className="text-center space-y-6">
+                <div className="mx-auto w-24 h-24 bg-rose-500 rounded-full flex items-center justify-center animate-pulse">
+                  <Ban className="h-12 w-12 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-black text-white">TRANSACTION BLOCKED</h2>
+                  <p className="text-rose-400 font-semibold mt-2">{assessment.reasons[0]}</p>
+                </div>
+                <div className="bg-rose-500/10 p-4 rounded-xl border border-rose-500/20 text-left">
+                  <ul className="space-y-3 text-rose-200 text-sm">
+                    {assessment.reasons.map((r, i) => (
+                      <li key={i} className="flex gap-3"><XCircle className="h-5 w-5 shrink-0 text-rose-500" /> {r}</li>
+                    ))}
+                  </ul>
+                </div>
+                <button onClick={() => setShowOverlay(false)} className="w-full py-4 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl transition-colors">
+                  ABORT PAYMENT
+                </button>
+              </div>
+            ) : (
+              <div className="text-center space-y-6">
+                <div className="mx-auto w-24 h-24 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                  <ShieldCheck className="h-12 w-12 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-black text-white">SAFE TO PAY</h2>
+                  <p className="text-emerald-400 font-semibold mt-2">Verified against Historical Behavior</p>
+                </div>
+                <div className="bg-emerald-500/10 p-4 rounded-xl border border-emerald-500/20 text-left text-sm text-emerald-200 space-y-3">
+                    <div className="flex gap-3"><CheckCircle className="h-5 w-5 shrink-0 text-emerald-500"/> <span>Risk Score: <strong className="text-white">{assessment.risk_score}/100</strong> ({assessment.risk_level})</span></div>
+                    {assessment.reasons.map((r, i) => (
+                      <li key={i} className="flex gap-3 list-none"><CheckCircle className="h-5 w-5 shrink-0 text-emerald-500" /> <span>{r}</span></li>
+                    ))}
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowOverlay(false)} className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">
+                    CANCEL
+                  </button>
+                  <button onClick={() => setShowOverlay(false)} className="flex-1 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl transition-colors shadow-lg shadow-emerald-500/20">
+                    PAY ₹{amount}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     <div className="space-y-8 animate-fade-in" id="personalized-risk-container">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Personalized Pre-Payment Risk</h1>
@@ -67,6 +160,24 @@ export default function PrePaymentRiskCheck() {
           <h2 className="text-xl font-semibold text-white mb-4">Run Risk Check</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            
+            <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl space-y-3 mb-2">
+              <label className="block text-sm font-semibold text-indigo-300 flex items-center gap-2">
+                <Scan className="h-4 w-4" />
+                Scan QR Code or Enter Phone
+              </label>
+              <input
+                type="text"
+                value={scannerInput}
+                onChange={(e) => handleScannerInput(e.target.value)}
+                placeholder="Paste UPI URI (upi://pay?...) or 10-digit phone number"
+                className="w-full px-4 py-2 bg-slate-900 border border-indigo-500/30 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+              />
+              <p className="text-xs text-indigo-400/70 leading-relaxed">
+                Automatically extracts UPI ID, Amount, and Merchant details. Simulates scanning a QR code or selecting a phone contact before paying.
+              </p>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1">User ID *</label>
               <input
@@ -134,14 +245,14 @@ export default function PrePaymentRiskCheck() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white font-medium rounded-lg shadow-sm transition flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white font-bold rounded-lg shadow-sm transition flex items-center justify-center gap-2"
             >
               {loading ? (
                 <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  <Search className="h-4 w-4" />
-                  Run Personalized Check
+                  <Scan className="h-5 w-5" />
+                  PROCEED TO PAY
                 </>
               )}
             </button>
@@ -264,14 +375,15 @@ export default function PrePaymentRiskCheck() {
           ) : (
             <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-12 text-center h-full flex flex-col justify-center items-center">
               <ShieldCheck className="h-16 w-16 text-slate-700 mb-4" />
-              <h3 className="text-lg font-semibold text-white mb-1">Ready for Risk Inspection</h3>
+              <h3 className="text-lg font-semibold text-white mb-1">Payment Simulation Ready</h3>
               <p className="text-slate-400 max-w-md text-sm">
-                Provide the transaction metrics in the left panel and click 'Run Personalized Check' to execute behavioral security analytics.
+                Enter transaction details or paste a simulated UPI QR string, then click 'PROCEED TO PAY'. The transaction will be intercepted in real-time to prevent fraud.
               </p>
             </div>
           )}
         </div>
       </div>
     </div>
+    </>
   );
 }

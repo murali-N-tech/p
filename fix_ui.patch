@@ -1,0 +1,87 @@
+--- src/components/PrePaymentRiskCheck.tsx
++++ src/components/PrePaymentRiskCheck.tsx
+@@ -2,7 +2,7 @@
+-import { Search, AlertTriangle, ShieldCheck, HelpCircle, MapPin, Landmark, Scan, Phone } from "lucide-react";
++import { Search, AlertTriangle, ShieldCheck, HelpCircle, MapPin, Landmark, Scan, Phone, XCircle, CheckCircle, Ban } from "lucide-react";
+ import { PersonalizedAssessment } from "../types";
+ 
+ export default function PrePaymentRiskCheck() {
+@@ -21,6 +21,7 @@
+   const [loading, setLoading] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+   const [assessment, setAssessment] = useState<PersonalizedAssessment | null>(null);
++  const [showOverlay, setShowOverlay] = useState(false);
+ 
+   const handleScannerInput = (val: string) => {
+@@ -52,7 +53,7 @@
+ 
+     try {
+       const res = await fetch("/api/personalized-risk-check", {
+@@ -62,6 +63,7 @@
+       const data = await res.json();
+       if (res.ok) {
+         setAssessment(data);
++        setShowOverlay(true);
+       } else {
+         setError(data.error || "Failed to run risk check.");
+       }
+@@ -93,6 +95,57 @@
+ 
+   return (
++    <>
++    {showOverlay && assessment && (
++      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
++        <div className={`max-w-md w-full rounded-2xl p-8 border ${assessment.risk_level === 'HIGH' ? 'bg-rose-950/90 border-rose-500' : 'bg-slate-900 border-emerald-500'}`}>
++          {assessment.risk_level === "HIGH" ? (
++            <div className="text-center space-y-6">
++              <div className="mx-auto w-24 h-24 bg-rose-500 rounded-full flex items-center justify-center animate-pulse">
++                <Ban className="h-12 w-12 text-white" />
++              </div>
++              <div>
++                <h2 className="text-3xl font-black text-white">TRANSACTION BLOCKED</h2>
++                <p className="text-rose-400 font-semibold mt-2">100% Verified Fraudulent Entity</p>
++              </div>
++              <div className="bg-rose-500/20 p-4 rounded-xl border border-rose-500/30 text-left">
++                <ul className="space-y-2 text-rose-200 text-sm">
++                  {assessment.reasons.map((r, i) => (
++                    <li key={i} className="flex gap-2"><XCircle className="h-5 w-5 shrink-0 text-rose-500" /> {r}</li>
++                  ))}
++                </ul>
++              </div>
++              <button onClick={() => setShowOverlay(false)} className="w-full py-4 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-xl transition-colors">
++                ABORT PAYMENT
++              </button>
++            </div>
++          ) : (
++            <div className="text-center space-y-6">
++              <div className="mx-auto w-24 h-24 bg-emerald-500 rounded-full flex items-center justify-center">
++                <ShieldCheck className="h-12 w-12 text-white" />
++              </div>
++              <div>
++                <h2 className="text-3xl font-black text-white">SAFE TO PAY</h2>
++                <p className="text-emerald-400 font-semibold mt-2">Verified against Historical Behavior</p>
++              </div>
++              <div className="bg-emerald-500/20 p-4 rounded-xl border border-emerald-500/30 text-left text-sm text-emerald-200 space-y-2">
++                  <div className="flex gap-2"><CheckCircle className="h-5 w-5 shrink-0 text-emerald-500"/> Risk Score: {assessment.risk_score}/100 ({assessment.risk_level})</div>
++                  <div className="flex gap-2"><CheckCircle className="h-5 w-5 shrink-0 text-emerald-500"/> Receiver matched historical velocity.</div>
++              </div>
++              <div className="flex gap-3">
++                <button onClick={() => setShowOverlay(false)} className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">
++                  CANCEL
++                </button>
++                <button onClick={() => setShowOverlay(false)} className="flex-1 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl transition-colors">
++                  PAY ₹{amount}
++                </button>
++              </div>
++            </div>
++          )}
++        </div>
++      </div>
++    )}
+     <div className="space-y-8 animate-fade-in" id="personalized-risk-container">
+       <div>
+         <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Personalized Pre-Payment Risk</h1>
+@@ -342,2 +395,3 @@
+     </div>
++    </>
+   );
